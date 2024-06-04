@@ -3,9 +3,11 @@ from sklearn.covariance import LedoitWolf
 import torch
 import numpy as np
 from scipy.linalg import sqrtm
+import ot
 
 #For two Gaussians N(m0,K0), N(m1,K1), compute the OT map F(x) = Ax + b, returning (A,b)
 
+# custom implementation of sqrtm 
 def torch_sqrtm(A, device='cuda'):
     A_ = A.to(torch.float64)
     e_vals, e_vecs = torch.linalg.eigh(A_)
@@ -65,7 +67,7 @@ def Affine_map(X, A, b, mean):
 #Returns AffMap(X), which is the transferrred dataset.
 #Optionally also returns the AT map as a pair (A,b).
 
-def sim2real(X, Y, correctCov=False, device='cuda:0', eps=1e-6):
+def AffineOT(X, Y, correctCov=False, device='cuda:0', eps=1e-6):
 
     #Compute mean and covariance matrix for the simulated data
     mX = X.mean(1).reshape(-1,1)
@@ -81,18 +83,23 @@ def sim2real(X, Y, correctCov=False, device='cuda:0', eps=1e-6):
         CovX = torch.cov(X) + 1e-6*torch.eye(X.shape[0], device=device) #the last term is no avoid singularities
         CovY = torch.cov(Y) + 1e-6*torch.eye(Y.shape[0], device=device)
     
-
+    """
     #Compute the OT map from X to Y
+    try:
+        A, b = ot.gaussian.bures_wasserstein_mapping(mX, CovX, mY, CovY, log=False)
+    except:
+        print('Error in affine OT mapping computation using POT, switching to custom implementation')
+        A, b = OT_map(mX, CovX, mY, CovY, eps)
+    """
     A, b = OT_map(mX, CovX, mY, CovY, eps)
-
     AffMap = lambda X: Affine_map(X, A, b, mX)
 
     return AffMap(X), CovY
 
 
 def rho_aff(X, Y, correctCov=False, device='cuda', eps=1e-6):
-    
-    X2Y, CovY = sim2real(X, Y, correctCov=correctCov, device=device, eps=eps)
+
+    X2Y, CovY = AffineOT(X, Y, correctCov=correctCov, device=device, eps=eps)
 
     nX = X.shape[1]
     nY = Y.shape[1]
@@ -105,5 +112,5 @@ def rho_aff(X, Y, correctCov=False, device='cuda', eps=1e-6):
     ot_cost = ot.emd2(mu_X, mu_Y, C, numItermax=1e7)
     upper_bound = 2*torch.trace(CovY)
 
-    return (1 - torch.sqrt(ot_cost/upper_bound)).cpu().numpy()
+    return (1 - torch.sqrt(ot_cost/upper_bound)).cpu().numpy().item()
 

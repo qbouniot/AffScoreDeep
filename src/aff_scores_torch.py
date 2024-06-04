@@ -66,14 +66,14 @@ def hook_fn(module, inputs):
         module.dict['aff_score'].append(aff_true)
     except:
         aff_true = 0
-        print("Error in aff_true")
+        print("Error in original affinity score, consider increasing batch size")
 
     try:    
         aff_shrinked = rho_aff(input2d.T, output2d.T, correctCov=True, device=device)
         module.dict['aff_score_corrected'].append(aff_shrinked)
     except:
         aff_shrinked = 0
-        print("Error in aff_shrinked")
+        print("Error in affinity score with shrinked covariance, consider increasing batch size")
 
     try:
         ckaRbf_score = linear_CKA(input2d, output2d, device=device)
@@ -135,14 +135,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', default=987, type=int)
 parser.add_argument('--path_data', default='./data/', type=str)
 parser.add_argument('--path_save', default='./results/', type=str)
-parser.add_argument('--batch_size', default=512, type=int)
+parser.add_argument('--batch_size', default=2048, type=int)
 parser.add_argument('--batch_id', default=0, type=int)
-parser.add_argument('--device', default='cuda')
+parser.add_argument('--device', default='cpu')
 parser.add_argument('--weights', default='DEFAULT')
 parser.add_argument('--model_name', default='alexnet', type=str)
-parser.add_argument('--val_dataset', nargs='+', default=[''], type=str)
-parser.add_argument('--verbose', action='store_true', default=False)
-parser.add_argument('--rerun', action='store_true', default=False)
+parser.add_argument('--val_dataset', nargs='+', default=['random'], type=str)
+parser.add_argument('--verbose', action='store_true', default=True)
+parser.add_argument('--rerun', action='store_true', default=True)
 parser.add_argument('--save_feats', action='store_true', default=False)
 parser.add_argument('--eps', type=float, default=1e-6)
 args = parser.parse_args()
