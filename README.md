@@ -1,5 +1,7 @@
 # From Alexnet to Transformers: Measuring the Non-linearity of Deep Neural Networks with Affine Optimal Transport
 
+Official code for computing Affinity Score and Non-linearity signatures from [From Alexnet to Transformers: Measuring the Non-linearity of Deep Neural Networks with Affine Optimal Transport](arxiv.org/abs/2310.11439) (2023).
+
 ## Installation 
 
 You can install all the required package using `conda`:
@@ -12,7 +14,15 @@ Or directly with `pip`:
 pip install -r requirements.txt
 ```
 
-## Compute non-linearity signature
+## Play with affinity score
+
+![Affinity score examples](./images/figure_aff_score.png)
+
+The two notebooks provided show how to compute affinity scores for activation functions separately, with examples on polynomial functions and on popular activation functions.
+
+## Compute non-linearity signatures
+
+![Non-linearity signature](./images/non_linearity_signature.png)
 
 To run the code and compute non-linearity signature of a given architecture `ARCH` on a given dataset `DATASET`:
 

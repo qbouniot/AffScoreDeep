@@ -2,13 +2,12 @@ import ot
 from sklearn.covariance import LedoitWolf
 import torch
 import numpy as np
-from scipy.linalg import sqrtm
-import ot
+from scipy.linalg import sqrtm, inv
 
 #For two Gaussians N(m0,K0), N(m1,K1), compute the OT map F(x) = Ax + b, returning (A,b)
 
 # custom implementation of sqrtm 
-def torch_sqrtm(A, device='cuda'):
+def torch_sqrtm(A):
     A_ = A.to(torch.float64)
     e_vals, e_vecs = torch.linalg.eigh(A_)
     e_vecs = torch.real(e_vecs)
@@ -18,7 +17,7 @@ def torch_sqrtm(A, device='cuda'):
     idx = torch.argwhere(e_vals>0)
     if len(idx)!=len(e_vals):
         #print('Caution! Numerical errors in sqrtm with {}/{} negative eigs.'.format(len(e_vals)-len(idx), len(e_vals)))
-        consts = torch.linspace(1e-7, 1e-6, len(e_vals)-len(idx), device=device)
+        consts = torch.linspace(1e-7, 1e-6, len(e_vals)-len(idx), device=A.device)
         eval_pos = e_vals[idx].ravel()
         e_vals_new = torch.cat((consts, eval_pos)).ravel()
         if len(torch.unique(e_vals_new)) != len(e_vals):
@@ -42,15 +41,17 @@ def OT_map(mX, covX, mY, covY, eps=1e-6, use_scipy=False):
     if torch.trace(covY) > 2*1e-6*covY.size(0):
         if use_scipy:
             A = sqrtm(covY)
+            tmp = A@(covX.numpy())@A 
         else:
             A = torch_sqrtm(covY)
-        tmp = A@covX@A 
+            tmp = A@covX@A 
         if use_scipy:
             sqtmp = sqrtm(tmp)
+            return (np.real(A@inv(sqtmp)@A), mY)
         else:
             sqtmp = torch_sqrtm(tmp) 
-
-        return (torch.real(A@torch.pinverse(sqtmp)@A), mY)
+            return (torch.real(A@torch.pinverse(sqtmp)@A), mY)
+        
     else:
         return (torch.zeros_like(covY), mY)
 
@@ -59,6 +60,8 @@ def OT_map(mX, covX, mY, covY, eps=1e-6, use_scipy=False):
 def Affine_map(X, A, b, mean):
     if isinstance(X, np.ndarray):
         X = torch.from_numpy(X)
+    if isinstance(A, np.ndarray):
+        A = torch.from_numpy(A).to(torch.float32)
     Y = X - mean
     return A@Y + b
 
@@ -67,7 +70,7 @@ def Affine_map(X, A, b, mean):
 #Returns AffMap(X), which is the transferrred dataset.
 #Optionally also returns the AT map as a pair (A,b).
 
-def AffineOT(X, Y, correctCov=False, device='cuda:0', eps=1e-6):
+def AffineOT(X, Y, correctCov=False, device='cuda', eps=1e-6):
 
     #Compute mean and covariance matrix for the simulated data
     mX = X.mean(1).reshape(-1,1)
@@ -77,11 +80,11 @@ def AffineOT(X, Y, correctCov=False, device='cuda:0', eps=1e-6):
 
     if correctCov:
         shrink = LedoitWolf()
-        CovX = torch.from_numpy(shrink.fit(X.cpu().numpy().T).covariance_).to(device) + 1e-6*torch.eye(X.shape[0], device=device)
-        CovY = torch.from_numpy(shrink.fit(Y.cpu().numpy().T).covariance_).to(device) + 1e-6*torch.eye(Y.shape[0], device=device)
+        CovX = torch.from_numpy(shrink.fit(X.cpu().numpy().T).covariance_).to(X.device) + 1e-6*torch.eye(X.shape[0], device=X.device)
+        CovY = torch.from_numpy(shrink.fit(Y.cpu().numpy().T).covariance_).to(X.device) + 1e-6*torch.eye(Y.shape[0], device=X.device)
     else:
-        CovX = torch.cov(X) + 1e-6*torch.eye(X.shape[0], device=device) #the last term is no avoid singularities
-        CovY = torch.cov(Y) + 1e-6*torch.eye(Y.shape[0], device=device)
+        CovX = torch.cov(X) + 1e-6*torch.eye(X.shape[0], device=X.device) #the last term is no avoid singularities
+        CovY = torch.cov(Y) + 1e-6*torch.eye(Y.shape[0], device=X.device)
     
     """
     #Compute the OT map from X to Y
@@ -91,7 +94,10 @@ def AffineOT(X, Y, correctCov=False, device='cuda:0', eps=1e-6):
         print('Error in affine OT mapping computation using POT, switching to custom implementation')
         A, b = OT_map(mX, CovX, mY, CovY, eps)
     """
-    A, b = OT_map(mX, CovX, mY, CovY, eps)
+    if device == 'cpu':
+        A, b = OT_map(mX, CovX, mY, CovY, eps, use_scipy=True)
+    else:
+        A, b = OT_map(mX, CovX, mY, CovY, eps)
     AffMap = lambda X: Affine_map(X, A, b, mX)
 
     return AffMap(X), CovY
